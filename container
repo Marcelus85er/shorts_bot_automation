@@ -1,0 +1,83 @@
+# shorts_bot_automation
+# Daily YouTube Shorts generator using ChatGPT, gTTS, MoviePy, and YouTube API
+
+import openai
+from moviepy.editor import *
+from gtts import gTTS
+from datetime import datetime
+import os
+import random
+import subprocess
+
+# === CONFIG ===
+OPENAI_API_KEY = "your_openai_api_key"
+TOPICS = ["resilience", "consistency", "mindset", "focus", "growth"]
+BACKGROUND_VIDEOS_DIR = "assets/backgrounds"
+MUSIC_PATH = "assets/music.mp3"
+OUTPUT_PATH = "output/short.mp4"
+
+# === SETUP ===
+openai.api_key = OPENAI_API_KEY
+os.makedirs("output", exist_ok=True)
+
+# === STEP 1: Generate Script ===
+def generate_script(topic):
+    prompt = f"Write a motivational script (under 60 words) about {topic}. Make it concise and impactful."
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.choices[0].message.content.strip()
+
+# === STEP 2: Generate Voiceover ===
+def generate_voice(text, filename="voice.mp3"):
+    tts = gTTS(text)
+    tts.save(filename)
+    return filename
+
+# === STEP 3: Create Video ===
+def create_video(script, output_path):
+    bg_files = [f for f in os.listdir(BACKGROUND_VIDEOS_DIR) if f.endswith(".mp4")]
+    bg_path = os.path.join(BACKGROUND_VIDEOS_DIR, random.choice(bg_files))
+
+    # Crop to vertical
+    cropped_bg_path = "output/bg_cropped.mp4"
+    subprocess.run([
+        "ffmpeg", "-i", bg_path,
+        "-vf", "crop=ih*9/16:ih,scale=1080:1920,blur=20",
+        "-t", "10", "-y", cropped_bg_path
+    ])
+
+    # Load video and audio
+    bg_clip = VideoFileClip(cropped_bg_path).subclip(0, 10)
+    voice_clip = AudioFileClip("voice.mp3")
+    music = AudioFileClip(MUSIC_PATH).subclip(0, 10).volumex(0.1)
+    audio = CompositeAudioClip([voice_clip, music])
+
+    # Add text
+    txt_clip = TextClip(script, fontsize=60, color='white', method='caption', size=(1000, None))
+    txt_clip = txt_clip.set_position('center').set_duration(10)
+
+    final = CompositeVideoClip([bg_clip, txt_clip]).set_audio(audio)
+    final.write_videofile(output_path, fps=24)
+
+# === STEP 4: Upload to YouTube (shell command placeholder) ===
+def upload_to_youtube(video_path, title, description):
+    print(f"Ready to upload: {title}\n{description}\n{video_path}")
+    # Implement using YouTube API script or use yt-upload CLI tool
+
+# === MAIN ===
+def run_daily_bot():
+    topic = random.choice(TOPICS)
+    script = generate_script(topic)
+    print(f"Generated script: {script}")
+
+    generate_voice(script)
+    create_video(script, OUTPUT_PATH)
+
+    today = datetime.now().strftime("%B %d, %Y")
+    title = f"{topic.capitalize()} Motivation - {today} #shorts"
+    upload_to_youtube(OUTPUT_PATH, title, script)
+
+if __name__ == "__main__":
+    run_daily_bot()
